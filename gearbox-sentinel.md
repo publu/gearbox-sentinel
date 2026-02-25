@@ -1,57 +1,49 @@
 # Gearbox Sentinel — Agent Skill
 
-Monitor Gearbox Finance lending pools, APY rates, reward programs, credit account positions, and protocol stats.
+Monitor Gearbox Finance: check wallet positions, browse lending pools, compare APYs, and view protocol stats.
 
 ## Setup
 
 ```bash
-# Save the checker script
 curl -sL https://raw.githubusercontent.com/publu/gearbox-sentinel/master/gearbox_check.py -o /tmp/gearbox_check.py
 ```
 
-## Commands
+## Quick Reference
 
-### Check credit account positions by wallet address
+| Command | What it does |
+|---------|-------------|
+| `position <address>` | Show all credit accounts for a wallet — debt, collateral, USD values, liquidation thresholds, health |
+| `pools` | List all lending pools with TVL and APY |
+| `pools <chain>` | Filter pools by chain (ethereum, monad, plasma, etherlink, lisk) |
+| `top [n]` | Rank pools by APY (default top 5) |
+| `rewards` | Active reward programs and point incentives |
+| `stats` | Protocol overview: total TVL, pool count, chains, best APY |
+
+## Usage
+
+### Check a wallet's leveraged positions
 ```bash
-python3 /tmp/gearbox_check.py position <wallet_address>
-python3 /tmp/gearbox_check.py position 0x1234...abcd ethereum
+python3 /tmp/gearbox_check.py position 0xd25b402197e0d3e48f0e4d4e08e4c04480de780de8
+```
+This scans all 11 CreditManagers on Ethereum and returns:
+- Each credit account's borrowed (debt) amount in USD
+- Full collateral breakdown: token, balance, USD value, liquidation threshold
+- Overall collateral ratio (health indicator — below 1.0x means liquidatable)
+
+### Browse pools
+```bash
+python3 /tmp/gearbox_check.py pools           # all pools
+python3 /tmp/gearbox_check.py pools monad     # monad only
+python3 /tmp/gearbox_check.py top 10          # best 10 by APY
 ```
 
-### List all lending pools
-```bash
-python3 /tmp/gearbox_check.py pools
-```
-
-### Filter pools by chain
-```bash
-python3 /tmp/gearbox_check.py pools ethereum
-python3 /tmp/gearbox_check.py pools monad
-```
-
-### Show top pools by APY
-```bash
-python3 /tmp/gearbox_check.py top        # default top 5
-python3 /tmp/gearbox_check.py top 10     # top 10
-```
-
-### Show reward programs and points
+### Check rewards and protocol stats
 ```bash
 python3 /tmp/gearbox_check.py rewards
-```
-
-### Protocol stats overview
-```bash
 python3 /tmp/gearbox_check.py stats
 ```
 
-## Data Sources
-
-- **Pool data (TVL, APY):** DefiLlama Yields API (`yields.llama.fi/pools`)
-- **Rewards/points:** Gearbox state cache CDN (`state-cache.gearbox.foundation/apy-server/latest.json`)
-- **Credit accounts:** On-chain via Ethereum RPC (reads CreditManager contracts directly)
-- **Token prices:** DefiLlama price API (`coins.llama.fi`)
-
-## Output Format
+## Example Output
 
 ### position
 ```
@@ -90,11 +82,16 @@ Gearbox Protocol Stats
   Best APY:         7.80% (AUSD on Monad)
 ```
 
+## Data Sources
+
+- **Pools/TVL/APY:** DefiLlama Yields API
+- **Rewards/points:** Gearbox state cache CDN
+- **Credit accounts:** On-chain CreditManager contracts via public Ethereum RPC
+- **Token prices:** DefiLlama price API
+
 ## Notes
 
-- No wallet or API key required — all data is public
-- Position lookups query 11 CreditManagers on Ethereum mainnet via public RPC
-- Shows per-token collateral balances, USD values, liquidation thresholds, and overall collateral ratio
-- Pools span multiple chains: Ethereum, Monad, Plasma, Etherlink, Lisk
-- APY includes both base lending yield and reward token incentives
-- Gearbox is a composable leverage protocol — pools supply liquidity that Credit Accounts borrow from
+- No API keys or wallet needed — fully read-only
+- Position lookups read directly from Ethereum mainnet (11 CreditManagers)
+- Collateral ratio < 1.0x = undercollateralized / liquidatable
+- Gearbox is a composable leverage protocol — users borrow from lending pools into Credit Accounts
