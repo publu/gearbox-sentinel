@@ -1,6 +1,6 @@
 # gearbox-sentinel
 
-Agent skill for monitoring Gearbox Finance lending pools, APY rates, reward programs, and protocol stats.
+Agent skill for monitoring Gearbox Finance lending pools, APY rates, reward programs, credit account positions, and protocol stats.
 
 ## Install as Agent Skill
 
@@ -12,6 +12,7 @@ curl -sL https://raw.githubusercontent.com/publu/gearbox-sentinel/master/gearbox
 
 | Command | Description |
 |---------|------------|
+| `position <address> [chain]` | Check credit account positions for a wallet |
 | `pools [chain]` | List lending pools with TVL/APY, optionally filter by chain |
 | `top [n]` | Show top N pools ranked by APY |
 | `rewards` | Show active reward programs and points |
@@ -21,6 +22,7 @@ curl -sL https://raw.githubusercontent.com/publu/gearbox-sentinel/master/gearbox
 
 - [DefiLlama Yields API](https://yields.llama.fi/pools) — pool TVL, APY
 - [Gearbox State Cache](https://state-cache.gearbox.foundation/apy-server/latest.json) — rewards, points
+- Ethereum RPC (public) — credit account on-chain data
 
 ## Requirements
 

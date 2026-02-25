@@ -1,6 +1,6 @@
 # Gearbox Sentinel — Agent Skill
 
-Monitor Gearbox Finance lending pools, APY rates, reward programs, and protocol stats.
+Monitor Gearbox Finance lending pools, APY rates, reward programs, credit account positions, and protocol stats.
 
 ## Setup
 
@@ -11,6 +11,12 @@ curl -sL https://raw.githubusercontent.com/publu/gearbox-sentinel/master/gearbox
 
 ## Commands
 
+### Check credit account positions by wallet address
+```bash
+python3 /tmp/gearbox_check.py position <wallet_address>
+python3 /tmp/gearbox_check.py position 0x1234...abcd ethereum
+```
+
 ### List all lending pools
 ```bash
 python3 /tmp/gearbox_check.py pools
@@ -20,7 +26,6 @@ python3 /tmp/gearbox_check.py pools
 ```bash
 python3 /tmp/gearbox_check.py pools ethereum
 python3 /tmp/gearbox_check.py pools monad
-python3 /tmp/gearbox_check.py pools plasma
 ```
 
 ### Show top pools by APY
@@ -43,8 +48,21 @@ python3 /tmp/gearbox_check.py stats
 
 - **Pool data (TVL, APY):** DefiLlama Yields API (`yields.llama.fi/pools`)
 - **Rewards/points:** Gearbox state cache CDN (`state-cache.gearbox.foundation/apy-server/latest.json`)
+- **Credit accounts:** On-chain via Ethereum RPC (reads CreditManager contracts directly)
 
 ## Output Format
+
+### position
+```
+Scanning 11 CreditManagers on ethereum for 0x8c2aec...78fee8
+
+  Credit Account: 0xdefbb4c6bc382d3b2f367c7f491e84fccdf8048b
+    CreditManager: 0xf5edc34204e67e592b...
+    Underlying:    wstETH
+    Debt:          0 wstETH
+    Last debt update: block 22,000,000
+    Collateral tokens enabled: 1
+```
 
 ### pools
 ```
@@ -64,18 +82,10 @@ Gearbox Protocol Stats
   Best APY:         7.80% (AUSD on Monad)
 ```
 
-### rewards
-```
-  Pool: 0xda00010eda646913f2... (Ethereum)
-    Points: Lombard LUX (LBTC) — 20000000/day
-
-  Pool: 0x6b343f7b797f1488aa... (Monad)
-    Extra APY: 5.41% in WMON
-```
-
 ## Notes
 
 - No wallet or API key required — all data is public
+- Position lookups query 11 CreditManagers on Ethereum mainnet via public RPC
 - Pools span multiple chains: Ethereum, Monad, Plasma, Etherlink, Lisk
 - APY includes both base lending yield and reward token incentives
 - Gearbox is a composable leverage protocol — pools supply liquidity that Credit Accounts borrow from
