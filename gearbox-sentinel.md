@@ -23,7 +23,7 @@ curl -sL https://raw.githubusercontent.com/publu/gearbox-sentinel/master/gearbox
 
 ### Check a wallet's leveraged positions
 ```bash
-python3 /tmp/gearbox_check.py position 0xd25b402197e0d3e48f0e4d4e08e4c04480de780de8
+python3 /tmp/gearbox_check.py position 0xd25b400836fc3376029bef3831c364e16c780de8
 ```
 This scans all 11 CreditManagers on Ethereum and returns:
 - Each credit account's borrowed (debt) amount in USD
