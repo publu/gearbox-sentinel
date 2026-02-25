@@ -49,19 +49,27 @@ python3 /tmp/gearbox_check.py stats
 - **Pool data (TVL, APY):** DefiLlama Yields API (`yields.llama.fi/pools`)
 - **Rewards/points:** Gearbox state cache CDN (`state-cache.gearbox.foundation/apy-server/latest.json`)
 - **Credit accounts:** On-chain via Ethereum RPC (reads CreditManager contracts directly)
+- **Token prices:** DefiLlama price API (`coins.llama.fi`)
 
 ## Output Format
 
 ### position
 ```
-Scanning 11 CreditManagers on ethereum for 0x8c2aec...78fee8
+Scanning 11 CreditManagers on ethereum for 0xd25b40...780de8
 
-  Credit Account: 0xdefbb4c6bc382d3b2f367c7f491e84fccdf8048b
-    CreditManager: 0xf5edc34204e67e592b...
-    Underlying:    wstETH
-    Debt:          0 wstETH
-    Last debt update: block 22,000,000
-    Collateral tokens enabled: 1
+  Credit Account: 0xc5f40bfdd6a94f20a61fd6f2692ba861ccd9ad79
+    CreditManager:  0x9a0fdf7cdab4604fc2...
+    Underlying:     WETH
+
+    Debt:
+      240.0000 WETH  ($460,605.02)
+    Collateral:
+      0 WETH  ($0.00)  LT: 96%
+      243.0000 weETH  ($507,208.42)  LT: 93%
+
+    Total collateral: $507,208.42
+    Total debt:       $460,605.02
+    Collateral ratio: 1.10x
 ```
 
 ### pools
@@ -86,6 +94,7 @@ Gearbox Protocol Stats
 
 - No wallet or API key required — all data is public
 - Position lookups query 11 CreditManagers on Ethereum mainnet via public RPC
+- Shows per-token collateral balances, USD values, liquidation thresholds, and overall collateral ratio
 - Pools span multiple chains: Ethereum, Monad, Plasma, Etherlink, Lisk
 - APY includes both base lending yield and reward token incentives
 - Gearbox is a composable leverage protocol — pools supply liquidity that Credit Accounts borrow from
