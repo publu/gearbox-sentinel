@@ -22,6 +22,13 @@ SEL_CREDIT_ACCOUNT_INFO = "0x3c5bc3b2"     # creditAccountInfo(address)
 SEL_POOL = "0x16f0115b"                     # pool()
 SEL_ASSET = "0x38d52e0f"                    # asset()
 SEL_UNDERLYING_TOKEN = "0x2495a599"         # underlyingToken()
+SEL_COLLATERAL_TOKEN = "0x52c5fe11"         # collateralTokenByMask(uint256)
+SEL_BALANCE_OF = "0x70a08231"              # balanceOf(address)
+SEL_SYMBOL = "0x95d89b41"                  # symbol()
+SEL_DECIMALS = "0x313ce567"                # decimals()
+
+# DefiLlama price API
+DEFILLAMA_PRICES = "https://coins.llama.fi/prices/current/"
 
 # Known Gearbox v3 CreditManager contracts (Ethereum mainnet)
 # From the Gearbox app frontend
@@ -171,6 +178,78 @@ def fmt_token(amount_raw, decimals):
         return f"{val:.6f}"
 
 
+def read_token_symbol(rpc, token_addr):
+    """Read symbol() from an ERC20 on-chain."""
+    result = eth_call(rpc, token_addr, SEL_SYMBOL)
+    if not result or result == "0x" or len(result) < 66:
+        return None
+    try:
+        raw = bytes.fromhex(result[2:])
+        # ABI-encoded string: offset(32) + length(32) + data
+        offset = int.from_bytes(raw[0:32], "big")
+        length = int.from_bytes(raw[offset:offset + 32], "big")
+        return raw[offset + 32:offset + 32 + length].decode("utf-8", errors="replace")
+    except Exception:
+        return None
+
+
+def read_token_decimals(rpc, token_addr):
+    """Read decimals() from an ERC20 on-chain."""
+    result = eth_call(rpc, token_addr, SEL_DECIMALS)
+    if not result or result == "0x" or len(result) < 66:
+        return 18
+    try:
+        return int(result, 16)
+    except Exception:
+        return 18
+
+
+def get_collateral_tokens(rpc, cm_addr, enabled_mask):
+    """Get list of (token_addr, liquidation_threshold) for each enabled bit in the mask."""
+    tokens = []
+    for bit in range(256):
+        if not (enabled_mask & (1 << bit)):
+            continue
+        mask_val = hex(1 << bit)
+        padded = mask_val[2:].zfill(64)
+        result = eth_call(rpc, cm_addr, SEL_COLLATERAL_TOKEN + padded)
+        if not result or result == "0x" or len(result) < 130:
+            continue
+        raw = bytes.fromhex(result[2:])
+        token_addr = "0x" + raw[0:32][-20:].hex()
+        lt = int.from_bytes(raw[32:64], "big")
+        tokens.append((token_addr, lt))
+    return tokens
+
+
+def read_balance(rpc, token_addr, account_addr):
+    """Read ERC20 balanceOf for an account."""
+    padded = account_addr.lower().replace("0x", "").zfill(64)
+    result = eth_call(rpc, token_addr, SEL_BALANCE_OF + padded)
+    if not result or result == "0x":
+        return 0
+    try:
+        return int(result, 16)
+    except Exception:
+        return 0
+
+
+def fetch_prices(token_addrs, chain="ethereum"):
+    """Fetch USD prices for a list of token addresses via DefiLlama."""
+    if not token_addrs:
+        return {}
+    keys = ",".join(f"{chain}:{addr}" for addr in token_addrs)
+    try:
+        data = fetch(DEFILLAMA_PRICES + keys)
+        prices = {}
+        for key, info in data.get("coins", {}).items():
+            addr = key.split(":")[1].lower()
+            prices[addr] = info.get("price", 0)
+        return prices
+    except Exception:
+        return {}
+
+
 def cmd_position(args):
     """Check credit account positions for a wallet address."""
     if not args:
@@ -193,11 +272,12 @@ def cmd_position(args):
     print(f"Scanning {len(cms)} CreditManagers on {chain} for {wallet[:8]}...{wallet[-6:]}")
     print()
 
-    found_any = False
+    # Collect all found accounts first, then batch price lookups
+    found_accounts = []
     scanned = 0
+
     for cm_addr in cms:
         try:
-            # Get all credit accounts from this CreditManager
             result = eth_call(rpc, cm_addr, SEL_CREDIT_ACCOUNTS)
             accounts = decode_addresses(result)
             scanned += 1
@@ -212,10 +292,7 @@ def cmd_position(args):
             pool_addr, underlying = get_underlying(rpc, cm_addr)
         except Exception:
             underlying = None
-        underlying_name = get_token_name(underlying) if underlying else "?"
-        underlying_decimals = get_token_decimals(underlying) if underlying else 18
 
-        # Check each account for our borrower
         for acct in accounts:
             try:
                 padded = acct.lower().replace("0x", "").zfill(64)
@@ -224,33 +301,116 @@ def cmd_position(args):
             except Exception:
                 continue
 
-            if not info:
+            if not info or info["borrower"].lower() != wallet:
                 continue
 
-            if info["borrower"].lower() != wallet:
-                continue
-
-            found_any = True
-            debt = info["debt"]
-            debt_fmt = fmt_token(debt, underlying_decimals)
-
-            print(f"  Credit Account: {acct}")
-            print(f"    CreditManager: {cm_addr[:20]}...")
-            print(f"    Underlying:    {underlying_name}")
-            print(f"    Debt:          {debt_fmt} {underlying_name}")
-            if info["last_update"] > 0:
-                print(f"    Last debt update: block {info['last_update']:,}")
-
-            # Count enabled tokens
+            # Get collateral token addresses and balances
+            collateral = []
             mask = info["enabled_mask"]
-            enabled_count = bin(mask).count("1")
-            print(f"    Collateral tokens enabled: {enabled_count}")
+            try:
+                coll_tokens = get_collateral_tokens(rpc, cm_addr, mask)
+            except Exception:
+                coll_tokens = []
+
+            for token_addr, lt in coll_tokens:
+                try:
+                    bal = read_balance(rpc, token_addr, acct)
+                except Exception:
+                    bal = 0
+
+                # Get token info — from known list or on-chain
+                key = token_addr.lower()
+                if key in KNOWN_TOKENS:
+                    sym, dec = KNOWN_TOKENS[key]
+                else:
+                    sym = read_token_symbol(rpc, token_addr) or token_addr[:10] + "..."
+                    dec = read_token_decimals(rpc, token_addr)
+                    KNOWN_TOKENS[key] = (sym, dec)
+
+                collateral.append({
+                    "addr": token_addr,
+                    "symbol": sym,
+                    "decimals": dec,
+                    "balance": bal,
+                    "lt": lt,
+                })
+
+            found_accounts.append({
+                "acct": acct,
+                "cm": cm_addr,
+                "underlying": underlying,
+                "info": info,
+                "collateral": collateral,
+            })
+
+    if not found_accounts:
+        print(f"  Scanned {scanned}/{len(cms)} CreditManagers")
+        print("  No active credit accounts found for this address.")
+        return
+
+    # Batch fetch all token prices
+    all_token_addrs = set()
+    for fa in found_accounts:
+        if fa["underlying"]:
+            all_token_addrs.add(fa["underlying"].lower())
+        for c in fa["collateral"]:
+            all_token_addrs.add(c["addr"].lower())
+
+    prices = fetch_prices(list(all_token_addrs), chain)
+
+    # Display
+    for fa in found_accounts:
+        info = fa["info"]
+        underlying = fa["underlying"]
+        underlying_name = get_token_name(underlying) if underlying else "?"
+        underlying_dec = get_token_decimals(underlying) if underlying else 18
+        underlying_price = prices.get(underlying.lower(), 0) if underlying else 0
+
+        debt_raw = info["debt"]
+        debt_val = debt_raw / (10 ** underlying_dec)
+        debt_usd = debt_val * underlying_price
+
+        print(f"  Credit Account: {fa['acct']}")
+        print(f"    CreditManager:  {fa['cm'][:20]}...")
+        print(f"    Underlying:     {underlying_name}")
+        print()
+
+        # Debt
+        print(f"    Debt:")
+        print(f"      {fmt_token(debt_raw, underlying_dec)} {underlying_name}", end="")
+        if underlying_price > 0:
+            print(f"  (${debt_usd:,.2f})")
+        else:
             print()
 
+        # Collateral
+        total_coll_usd = 0
+        if fa["collateral"]:
+            print(f"    Collateral:")
+            for c in fa["collateral"]:
+                bal_val = c["balance"] / (10 ** c["decimals"])
+                price = prices.get(c["addr"].lower(), 0)
+                usd_val = bal_val * price
+                total_coll_usd += usd_val
+                lt_pct = c["lt"] / 100 if c["lt"] < 10000 else c["lt"] / 100
+
+                line = f"      {fmt_token(c['balance'], c['decimals'])} {c['symbol']}"
+                if price > 0:
+                    line += f"  (${usd_val:,.2f})"
+                line += f"  LT: {lt_pct:.0f}%"
+                print(line)
+
+        # Summary
+        if underlying_price > 0 and total_coll_usd > 0:
+            print()
+            print(f"    Total collateral: ${total_coll_usd:,.2f}")
+            print(f"    Total debt:       ${debt_usd:,.2f}")
+            if debt_usd > 0:
+                ratio = total_coll_usd / debt_usd
+                print(f"    Collateral ratio: {ratio:.2f}x")
+        print()
+
     print(f"  Scanned {scanned}/{len(cms)} CreditManagers")
-    if not found_any:
-        print("  No active credit accounts found for this address.")
-        print("  Note: only Ethereum mainnet CreditManagers are currently indexed.")
 
 
 def cmd_pools(args):
